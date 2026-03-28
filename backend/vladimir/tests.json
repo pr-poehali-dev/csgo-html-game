@@ -1,0 +1,31 @@
+{
+  "tests": [
+    {
+      "name": "Start greeting",
+      "method": "POST",
+      "path": "/",
+      "body": "{\"trigger\": \"start\", \"clicks\": 0, \"cps\": 0, \"catName\": \"Мурзик\"}",
+      "expectedStatus": 200,
+      "expectedBody": {"message": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Click comment",
+      "method": "POST",
+      "path": "/",
+      "body": "{\"trigger\": \"click\", \"clicks\": 42, \"cps\": 1.5, \"catName\": \"Мурзик\"}",
+      "expectedStatus": 200,
+      "expectedBody": {"message": "string", "mood": "string"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Upgrade comment",
+      "method": "POST",
+      "path": "/",
+      "body": "{\"trigger\": \"upgrade\", \"clicks\": 500, \"upgrades\": [\"Мышка\", \"Клубок\"], \"catName\": \"Барсик\"}",
+      "expectedStatus": 200,
+      "expectedBody": {"message": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

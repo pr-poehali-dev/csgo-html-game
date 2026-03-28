@@ -7,8 +7,9 @@ import Shop from './components/game/Shop';
 import Settings from './components/game/Settings';
 import RoundStart from './components/game/RoundStart';
 import GameView from './components/game/GameView';
+import CatClicker from './pages/CatClicker';
 
-type Screen = 'menu' | 'lobby' | 'shop' | 'settings' | 'roundstart' | 'shop-round' | 'game';
+type Screen = 'menu' | 'lobby' | 'shop' | 'settings' | 'roundstart' | 'shop-round' | 'game' | 'clicker';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('menu');
@@ -82,6 +83,7 @@ export default function App() {
             score={score}
           />
         )}
+        {screen === 'clicker' && <CatClicker />}
       </div>
     </TooltipProvider>
   );

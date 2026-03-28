@@ -12,6 +12,7 @@ const MAP_IMAGE = "https://cdn.poehali.dev/projects/c3f9c6ae-1942-4ca8-b7cb-2baf
 export default function MainMenu({ onNavigate, playerName, playerRank, playerLevel }: MainMenuProps) {
   const menuItems = [
     { id: 'lobby', label: 'Играть', icon: 'Crosshair', accent: true },
+    { id: 'clicker', label: '🐱 КотКликер', icon: 'MousePointer', accent: false },
     { id: 'shop', label: 'Магазин', icon: 'ShoppingBag', accent: false },
     { id: 'settings', label: 'Настройки', icon: 'Settings', accent: false },
   ];
