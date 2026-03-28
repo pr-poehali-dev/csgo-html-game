@@ -362,6 +362,114 @@ export function buildCityBelow(scene: THREE.Scene): CityObject[] {
   return cityObjects;
 }
 
+// ─── PEDESTRIANS ─────────────────────────────────────────────────────────────
+export interface PedestrianData {
+  update: (t: number) => void;
+}
+
+function makePedestrian(scene: THREE.Scene, startX: number, startZ: number, color: number): PedestrianData {
+  const CITY_Y = -180;
+  const group = new THREE.Group();
+
+  // Body
+  const bodyMat = new THREE.MeshLambertMaterial({ color });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.9, 0.25), bodyMat);
+  body.position.y = 0.45;
+  group.add(body);
+
+  // Head
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xf5c99a });
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), headMat);
+  head.position.y = 1.1;
+  group.add(head);
+
+  // Legs
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x334455 });
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), legMat);
+  legL.position.set(-0.12, -0.3, 0);
+  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), legMat);
+  legR.position.set(0.12, -0.3, 0);
+  group.add(legL, legR);
+
+  // Arms
+  const armMat = new THREE.MeshLambertMaterial({ color });
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14), armMat);
+  armL.position.set(-0.3, 0.45, 0);
+  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14), armMat);
+  armR.position.set(0.3, 0.45, 0);
+  group.add(armL, armR);
+
+  group.position.set(startX, CITY_Y + 1.5, startZ);
+  scene.add(group);
+
+  // Random walk path: patrol between two points
+  const axis = Math.random() > 0.5 ? 'x' : 'z';
+  const range = 15 + Math.random() * 30;
+  const speed = 0.8 + Math.random() * 1.2;
+  const offset = Math.random() * Math.PI * 2;
+
+  return {
+    update(t: number) {
+      const s = Math.sin(t * speed * 0.5 + offset);
+      if (axis === 'x') {
+        group.position.x = startX + s * range;
+        group.rotation.y = s > 0 ? 0 : Math.PI;
+      } else {
+        group.position.z = startZ + s * range;
+        group.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+
+      // Walk animation — swing legs and arms
+      const walk = Math.sin(t * speed * 4 + offset);
+      legL.rotation.x = walk * 0.5;
+      legR.rotation.x = -walk * 0.5;
+      armL.rotation.x = -walk * 0.4;
+      armR.rotation.x = walk * 0.4;
+      // Slight body bob
+      group.position.y = CITY_Y + 1.5 + Math.abs(Math.sin(t * speed * 4 + offset)) * 0.06;
+    }
+  };
+}
+
+export function buildPedestrians(scene: THREE.Scene): PedestrianData[] {
+  const pedestrians: PedestrianData[] = [];
+
+  const shirtColors = [
+    0xcc3333, 0x3366cc, 0x33aa55, 0xddaa22, 0xaa3388,
+    0x228888, 0xee6622, 0x4455cc, 0x882233, 0x557733,
+    0xcc8844, 0x446688, 0x993366, 0x66aa44, 0xff5533,
+  ];
+
+  // Spread pedestrians on sidewalks along roads
+  const sidewalkPositions: [number, number][] = [];
+
+  // Along main roads
+  for (let i = -2; i <= 2; i++) {
+    for (let j = -10; j < 10; j++) {
+      const offset = (Math.random() - 0.5) * 6 + (i * 100);
+      // Sidewalks ~8-10 units from road center
+      sidewalkPositions.push([j * 20 + (Math.random() - 0.5) * 8, offset + 8]);
+      sidewalkPositions.push([j * 20 + (Math.random() - 0.5) * 8, offset - 8]);
+      sidewalkPositions.push([offset + 8, j * 20 + (Math.random() - 0.5) * 8]);
+      sidewalkPositions.push([offset - 8, j * 20 + (Math.random() - 0.5) * 8]);
+    }
+  }
+
+  // Limit to 80 pedestrians for performance
+  const chosen = sidewalkPositions.sort(() => Math.random() - 0.5).slice(0, 80);
+
+  for (const [x, z] of chosen) {
+    // Skip if too close to building centers
+    const tooClose = Math.abs(x) < 20 && Math.abs(z) < 20;
+    if (tooClose) continue;
+
+    const color = shirtColors[Math.floor(Math.random() * shirtColors.length)];
+    pedestrians.push(makePedestrian(scene, x, z, color));
+  }
+
+  return pedestrians;
+}
+
 // ─── NEBOSKREB (the main tower body) ─────────────────────────────────────────
 export function buildTowerBody(scene: THREE.Scene) {
   const objects: THREE.Object3D[] = [];

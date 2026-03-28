@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { buildVertigoMap, buildCityBelow, buildTowerBody, CityObject } from './VertigoMap';
+import { buildVertigoMap, buildCityBelow, buildTowerBody, CityObject, buildPedestrians, PedestrianData } from './VertigoMap';
 
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
-  onRoundBuy?: () => void;
+  onDeath?: () => void;
 }
 
 export class GameEngine {
@@ -19,6 +19,10 @@ export class GameEngine {
   private pitch = 0;
   private velocity = new THREE.Vector3();
   private onGround = false;
+  private isDead = false;
+  private fallStartY = 0;
+  private isFalling = false;
+  private deathCallback?: () => void;
 
   // Input
   private keys: Record<string, boolean> = {};
@@ -27,14 +31,19 @@ export class GameEngine {
 
   // City objects with update callbacks
   private cityObjects: CityObject[] = [];
+  private pedestrians: PedestrianData[] = [];
 
   // Dynamic lights
-  private warningLightGroup: THREE.Object3D[] = [];
   private sunLight!: THREE.DirectionalLight;
   private cityAmb!: THREE.AmbientLight;
 
+  // Death screen
+  private deathTime = 0;
+  private screenRed = 0;
+
   constructor(opts: EngineOptions) {
     this.canvas = opts.canvas;
+    this.deathCallback = opts.onDeath;
 
     // ─── RENDERER ──────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({ canvas: opts.canvas, antialias: true });
@@ -55,11 +64,9 @@ export class GameEngine {
     this.camera.position.copy(this.pos);
 
     // ─── LIGHTING ──────────────────────────────────────────────
-    // Sky ambient — bright daylight
     const amb = new THREE.AmbientLight(0xfff0d0, 1.6);
     this.scene.add(amb);
 
-    // Sun — strong warm directional
     this.sunLight = new THREE.DirectionalLight(0xfff5e0, 3.0);
     this.sunLight.position.set(120, 200, 80);
     this.sunLight.castShadow = true;
@@ -73,38 +80,26 @@ export class GameEngine {
     this.sunLight.shadow.bias = -0.001;
     this.scene.add(this.sunLight);
 
-    // Sky fill (bounce from blue sky above)
     const skyFill = new THREE.HemisphereLight(0x87ceeb, 0xd4c5a0, 0.8);
     this.scene.add(skyFill);
 
-    // City ambient — warm haze from city below
     this.cityAmb = new THREE.AmbientLight(0xffd090, 0.1);
     this.scene.add(this.cityAmb);
 
-    // Stars
-    this._addStars();
-
-    // ─── SKY GRADIENT ──────────────────────────────────────────
     this._addSkyDome();
 
     // ─── MAP ───────────────────────────────────────────────────
     buildVertigoMap(this.scene);
     buildTowerBody(this.scene);
     this.cityObjects = buildCityBelow(this.scene);
-
-    // ─── CROSSHAIR (CSS, not 3D) ────────────────────────────────
+    this.pedestrians = buildPedestrians(this.scene);
 
     // ─── EVENTS ────────────────────────────────────────────────
     this._bindEvents();
     window.addEventListener('resize', this._onResize);
   }
 
-  // ─── STARS — not needed for day, skip ─────────────────────────
-  private _addStars() {
-    // Day — no stars
-  }
-
-  // ─── SKY DOME — daytime blue gradient ─────────────────────────
+  // ─── SKY DOME ─────────────────────────────────────────────────
   private _addSkyDome() {
     const geo = new THREE.SphereGeometry(450, 32, 16);
     const mat = new THREE.ShaderMaterial({
@@ -119,13 +114,11 @@ export class GameEngine {
         void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
       `,
       fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 midColor;
-        uniform vec3 bottomColor;
+        uniform vec3 topColor; uniform vec3 midColor; uniform vec3 bottomColor;
         varying vec3 vPos;
         void main() {
           float t = clamp((normalize(vPos).y + 0.05) / 1.05, 0.0, 1.0);
-          vec3 col = t > 0.5 ? mix(midColor, topColor, (t - 0.5) * 2.0) : mix(bottomColor, midColor, t * 2.0);
+          vec3 col = t > 0.5 ? mix(midColor, topColor, (t-0.5)*2.0) : mix(bottomColor, midColor, t*2.0);
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -134,50 +127,31 @@ export class GameEngine {
     dome.position.y = -50;
     this.scene.add(dome);
 
-    // Sun disc
-    const sunGeo = new THREE.SphereGeometry(8, 16, 16);
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffbe0 });
-    const sun = new THREE.Mesh(sunGeo, sunMat);
+    // Sun
+    const sun = new THREE.Mesh(new THREE.SphereGeometry(8, 16, 16), new THREE.MeshBasicMaterial({ color: 0xfffbe0 }));
     sun.position.set(200, 300, -150);
     this.scene.add(sun);
-
-    // Sun halo
-    const haloGeo = new THREE.SphereGeometry(14, 16, 16);
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0.15 });
-    const halo = new THREE.Mesh(haloGeo, haloMat);
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(14, 16, 16), new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0.15 }));
     halo.position.copy(sun.position);
     this.scene.add(halo);
 
     // Clouds
-    this._addClouds();
-  }
-
-  private _addClouds() {
     const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.88 });
-    const cloudPositions = [
-      [-150, 80, -200], [100, 100, -180], [200, 90, -100],
-      [-200, 70, -50], [0, 110, -300], [250, 85, 50],
-      [-100, 95, 200], [150, 75, 150],
-    ];
-    for (const [cx, cy, cz] of cloudPositions) {
-      const group = new THREE.Group();
-      const puffs = 4 + Math.floor(Math.random() * 4);
-      for (let p = 0; p < puffs; p++) {
-        const r = 6 + Math.random() * 10;
-        const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 7), cloudMat);
-        puff.position.set(
-          (Math.random() - 0.5) * 30,
-          (Math.random() - 0.5) * 6,
-          (Math.random() - 0.5) * 20
-        );
-        group.add(puff);
+    const cpos = [[-150,80,-200],[100,100,-180],[200,90,-100],[-200,70,-50],[0,110,-300],[250,85,50],[-100,95,200],[150,75,150]];
+    for (const [cx,cy,cz] of cpos) {
+      const g = new THREE.Group();
+      for (let p = 0; p < 4 + Math.floor(Math.random()*4); p++) {
+        const r = 6 + Math.random()*10;
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(r,7,7), cloudMat);
+        puff.position.set((Math.random()-0.5)*30,(Math.random()-0.5)*6,(Math.random()-0.5)*20);
+        g.add(puff);
       }
-      group.position.set(cx, cy, cz);
-      this.scene.add(group);
+      g.position.set(cx,cy,cz);
+      this.scene.add(g);
     }
   }
 
-  // ─── INPUT EVENTS ──────────────────────────────────────────────
+  // ─── INPUT ─────────────────────────────────────────────────────
   private _bindEvents() {
     document.addEventListener('keydown', this._onKey);
     document.addEventListener('keyup', this._onKey);
@@ -186,20 +160,12 @@ export class GameEngine {
     document.addEventListener('mousemove', this._onMouseMove);
   }
 
-  private _onKey = (e: KeyboardEvent) => {
-    this.keys[e.code] = e.type === 'keydown';
-  };
-
-  private _requestPointerLock = () => {
-    this.canvas.requestPointerLock();
-  };
-
-  private _onPointerLockChange = () => {
-    this.isPointerLocked = document.pointerLockElement === this.canvas;
-  };
+  private _onKey = (e: KeyboardEvent) => { this.keys[e.code] = e.type === 'keydown'; };
+  private _requestPointerLock = () => { this.canvas.requestPointerLock(); };
+  private _onPointerLockChange = () => { this.isPointerLocked = document.pointerLockElement === this.canvas; };
 
   private _onMouseMove = (e: MouseEvent) => {
-    if (!this.isPointerLocked) return;
+    if (!this.isPointerLocked || this.isDead) return;
     const sens = 0.002;
     this.yaw -= e.movementX * sens;
     this.pitch -= e.movementY * sens;
@@ -207,69 +173,101 @@ export class GameEngine {
   };
 
   private _onResize = () => {
-    const w = this.canvas.clientWidth;
-    const h = this.canvas.clientHeight;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
 
-  // ─── MOVEMENT & COLLISION (simplified) ────────────────────────
+  // ─── MOVEMENT & PHYSICS ────────────────────────────────────────
   private _updateMovement(dt: number) {
-    const SPEED = 8;
-    const GRAVITY = -20;
-    const JUMP_VEL = 6;
-    const FLOOR_Y = 1.7;
-    const FLOOR2_Y = 5.7;
+    if (this.isDead) return;
 
+    const SPEED = 8;
+    const GRAVITY = -28;
+    const JUMP_VEL = 7;
+    const CITY_FLOOR_Y = -180 + 1.7; // ground level in city
+    const ROOF_FLOOR_Y = 1.7;
+    const ROOF_FLOOR2_Y = 5.7;
+    const DEATH_Y = CITY_FLOOR_Y + 0.1;
+
+    // Horizontal move
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-
     const move = new THREE.Vector3();
-    if (this.keys['KeyW'] || this.keys['ArrowUp']) move.add(forward);
-    if (this.keys['KeyS'] || this.keys['ArrowDown']) move.sub(forward);
-    if (this.keys['KeyA'] || this.keys['ArrowLeft']) move.sub(right);
+    if (this.keys['KeyW'] || this.keys['ArrowUp'])    move.add(forward);
+    if (this.keys['KeyS'] || this.keys['ArrowDown'])  move.sub(forward);
+    if (this.keys['KeyA'] || this.keys['ArrowLeft'])  move.sub(right);
     if (this.keys['KeyD'] || this.keys['ArrowRight']) move.add(right);
-
     if (move.lengthSq() > 0) move.normalize().multiplyScalar(SPEED);
 
     this.velocity.x = move.x;
     this.velocity.z = move.z;
 
-    // Gravity
+    // Gravity always applies
     this.velocity.y += GRAVITY * dt;
 
     // Jump
-    if ((this.keys['Space']) && this.onGround) {
+    if (this.keys['Space'] && this.onGround) {
       this.velocity.y = JUMP_VEL;
       this.onGround = false;
     }
 
     this.pos.addScaledVector(this.velocity, dt);
 
-    // Clamp to rooftop bounds
-    this.pos.x = Math.max(-38, Math.min(38, this.pos.x));
-    this.pos.z = Math.max(-28, Math.min(28, this.pos.z));
+    // Track free-fall start
+    if (!this.onGround && !this.isFalling && this.pos.y < ROOF_FLOOR_Y - 2) {
+      this.isFalling = true;
+      this.fallStartY = this.pos.y;
+    }
 
-    // Floor detection (simplified)
-    // Upper platform: roughly x in -20..20, z in -25..-5
-    const onUpperPlatform =
-      this.pos.x > -20 && this.pos.x < 20 && this.pos.z > -25 && this.pos.z < -5;
+    // ── FLOOR DETECTION ──────────────────────────────────────
+    // Only clamp X/Z while on rooftop area (above -10)
+    if (this.pos.y > -10) {
+      this.pos.x = Math.max(-40, Math.min(40, this.pos.x));
+      this.pos.z = Math.max(-30, Math.min(30, this.pos.z));
+    }
 
-    const floorY = onUpperPlatform ? FLOOR2_Y : FLOOR_Y;
+    // Rooftop floors
+    const onUpperPlatform = this.pos.x > -20 && this.pos.x < 20 && this.pos.z > -25 && this.pos.z < -5;
+    const onACover = this.pos.x > 9 && this.pos.x < 21 && this.pos.z > -5 && this.pos.z < 5;
+    const roofFloor = onACover ? 5.2 + 1.7 : onUpperPlatform ? ROOF_FLOOR2_Y : ROOF_FLOOR_Y;
 
-    // A-site structure top
-    const onACover =
-      this.pos.x > 9 && this.pos.x < 21 && this.pos.z > -5 && this.pos.z < 5;
-    const finalFloor = onACover ? 5.2 + 1.7 : floorY;
-
-    if (this.pos.y < finalFloor) {
-      this.pos.y = finalFloor;
+    // Only snap to rooftop if above it OR just landed from above
+    if (this.pos.y <= roofFloor && this.pos.y > -5) {
+      this.pos.y = roofFloor;
       this.velocity.y = 0;
       this.onGround = true;
+      this.isFalling = false;
+    } else if (this.pos.y <= DEATH_Y) {
+      // ── DEATH — hit the city ground ──────────────────────────
+      this.pos.y = DEATH_Y;
+      this.velocity.set(0, 0, 0);
+      this.onGround = true;
+      this._triggerDeath();
     } else {
       this.onGround = false;
     }
+  }
+
+  private _triggerDeath() {
+    if (this.isDead) return;
+    this.isDead = true;
+    this.deathTime = this.clock.getElapsedTime();
+    // Tilt camera dramatically
+    this.pitch = 0.6;
+    if (this.deathCallback) {
+      setTimeout(() => this.deathCallback!(), 2500);
+    }
+  }
+
+  public respawn() {
+    this.isDead = false;
+    this.isFalling = false;
+    this.pos.set(0, 1.7, 15);
+    this.velocity.set(0, 0, 0);
+    this.pitch = 0;
+    this.screenRed = 0;
   }
 
   // ─── MAIN LOOP ─────────────────────────────────────────────────
@@ -282,18 +280,35 @@ export class GameEngine {
       this._updateMovement(dt);
 
       // Camera
-      this.camera.position.copy(this.pos);
+      if (this.isDead) {
+        // Slowly tilt forward like ragdoll
+        const elapsed = t - this.deathTime;
+        this.pitch = Math.min(1.4, 0.6 + elapsed * 0.3);
+        this.camera.position.copy(this.pos);
+        this.camera.position.y += 0.5 - elapsed * 0.3; // slowly sink
+      } else {
+        this.camera.position.copy(this.pos);
+      }
+
       const euler = new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ');
       this.camera.quaternion.setFromEuler(euler);
 
-      // City updates
+      // City pedestrians update
+      for (const p of this.pedestrians) {
+        p.update(t);
+      }
+
+      // City objects update
       for (const obj of this.cityObjects) {
         obj.update?.(t);
       }
 
-      // Subtle daytime variation
-      this.cityAmb.intensity = 0.08 + Math.sin(t * 0.1) * 0.02;
+      // Screen red tint on death (handled in GameView via getter)
+      if (this.isDead) {
+        this.screenRed = Math.min(1, this.screenRed + dt * 1.5);
+      }
 
+      this.cityAmb.intensity = 0.08 + Math.sin(t * 0.1) * 0.02;
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -307,13 +322,12 @@ export class GameEngine {
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
     document.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('resize', this._onResize);
-
-    if (document.pointerLockElement === this.canvas) {
-      document.exitPointerLock();
-    }
-
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     this.renderer.dispose();
   }
 
   isLocked() { return this.isPointerLocked; }
+  getIsDead() { return this.isDead; }
+  getScreenRed() { return this.screenRed; }
+  getPlayerY() { return this.pos.y; }
 }
