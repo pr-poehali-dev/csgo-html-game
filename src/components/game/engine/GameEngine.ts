@@ -43,57 +43,43 @@ export class GameEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
-    this.renderer.fog = new THREE.Fog(0x0a0d14, 5, 400);
+    this.renderer.toneMappingExposure = 1.2;
 
     // ─── SCENE ─────────────────────────────────────────────────
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x060810);
-    this.scene.fog = new THREE.FogExp2(0x060810, 0.004);
+    this.scene.background = new THREE.Color(0x87ceeb);
+    this.scene.fog = new THREE.FogExp2(0xc9e8f5, 0.0018);
 
     // ─── CAMERA ────────────────────────────────────────────────
     this.camera = new THREE.PerspectiveCamera(75, opts.canvas.clientWidth / opts.canvas.clientHeight, 0.1, 800);
     this.camera.position.copy(this.pos);
 
     // ─── LIGHTING ──────────────────────────────────────────────
-    // Ambient — night sky
-    const amb = new THREE.AmbientLight(0x1a2040, 0.8);
+    // Sky ambient — bright daylight
+    const amb = new THREE.AmbientLight(0xfff0d0, 1.6);
     this.scene.add(amb);
 
-    // Moon / dim directional
-    this.sunLight = new THREE.DirectionalLight(0x6080c0, 0.6);
-    this.sunLight.position.set(80, 120, 40);
+    // Sun — strong warm directional
+    this.sunLight = new THREE.DirectionalLight(0xfff5e0, 3.0);
+    this.sunLight.position.set(120, 200, 80);
     this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.set(2048, 2048);
-    this.sunLight.shadow.camera.near = 0.5;
-    this.sunLight.shadow.camera.far = 400;
-    this.sunLight.shadow.camera.left = -80;
-    this.sunLight.shadow.camera.right = 80;
-    this.sunLight.shadow.camera.top = 80;
-    this.sunLight.shadow.camera.bottom = -80;
+    this.sunLight.shadow.mapSize.set(4096, 4096);
+    this.sunLight.shadow.camera.near = 1;
+    this.sunLight.shadow.camera.far = 600;
+    this.sunLight.shadow.camera.left = -100;
+    this.sunLight.shadow.camera.right = 100;
+    this.sunLight.shadow.camera.top = 100;
+    this.sunLight.shadow.camera.bottom = -100;
+    this.sunLight.shadow.bias = -0.001;
     this.scene.add(this.sunLight);
 
-    // City glow from below
-    this.cityAmb = new THREE.AmbientLight(0xff8833, 0.15);
+    // Sky fill (bounce from blue sky above)
+    const skyFill = new THREE.HemisphereLight(0x87ceeb, 0xd4c5a0, 0.8);
+    this.scene.add(skyFill);
+
+    // City ambient — warm haze from city below
+    this.cityAmb = new THREE.AmbientLight(0xffd090, 0.1);
     this.scene.add(this.cityAmb);
-
-    // Orange accent fill
-    const fillLight = new THREE.PointLight(0xff6622, 0.4, 60);
-    fillLight.position.set(15, 3, 0);
-    this.scene.add(fillLight);
-
-    // Roof spotlight A site
-    const spotA = new THREE.SpotLight(0xffffff, 1.5, 40, Math.PI / 5, 0.4);
-    spotA.position.set(15, 12, 0);
-    spotA.target.position.set(15, 0, 0);
-    spotA.castShadow = false;
-    this.scene.add(spotA);
-    this.scene.add(spotA.target);
-
-    // B site blue tint
-    const spotB = new THREE.PointLight(0x4466ff, 0.5, 30);
-    spotB.position.set(-15, 5, 5);
-    this.scene.add(spotB);
 
     // Stars
     this._addStars();
@@ -113,47 +99,82 @@ export class GameEngine {
     window.addEventListener('resize', this._onResize);
   }
 
-  // ─── STARS ─────────────────────────────────────────────────────
+  // ─── STARS — not needed for day, skip ─────────────────────────
   private _addStars() {
-    const geo = new THREE.BufferGeometry();
-    const count = 2000;
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 400 + Math.random() * 50;
-      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = Math.abs(r * Math.cos(phi));
-      pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-    }
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, sizeAttenuation: true });
-    this.scene.add(new THREE.Points(geo, mat));
+    // Day — no stars
   }
 
-  // ─── SKY DOME ─────────────────────────────────────────────────
+  // ─── SKY DOME — daytime blue gradient ─────────────────────────
   private _addSkyDome() {
     const geo = new THREE.SphereGeometry(450, 32, 16);
     const mat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
-      uniforms: { topColor: { value: new THREE.Color(0x02050f) }, bottomColor: { value: new THREE.Color(0x0a1530) } },
+      uniforms: {
+        topColor:    { value: new THREE.Color(0x1a6fd4) },
+        midColor:    { value: new THREE.Color(0x5ab0f0) },
+        bottomColor: { value: new THREE.Color(0xc9e8f5) },
+      },
       vertexShader: `
         varying vec3 vPos;
         void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
       `,
       fragmentShader: `
         uniform vec3 topColor;
+        uniform vec3 midColor;
         uniform vec3 bottomColor;
         varying vec3 vPos;
         void main() {
-          float t = clamp((normalize(vPos).y + 0.1) / 1.1, 0.0, 1.0);
-          gl_FragColor = vec4(mix(bottomColor, topColor, t), 1.0);
+          float t = clamp((normalize(vPos).y + 0.05) / 1.05, 0.0, 1.0);
+          vec3 col = t > 0.5 ? mix(midColor, topColor, (t - 0.5) * 2.0) : mix(bottomColor, midColor, t * 2.0);
+          gl_FragColor = vec4(col, 1.0);
         }
       `,
     });
     const dome = new THREE.Mesh(geo, mat);
     dome.position.y = -50;
     this.scene.add(dome);
+
+    // Sun disc
+    const sunGeo = new THREE.SphereGeometry(8, 16, 16);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffbe0 });
+    const sun = new THREE.Mesh(sunGeo, sunMat);
+    sun.position.set(200, 300, -150);
+    this.scene.add(sun);
+
+    // Sun halo
+    const haloGeo = new THREE.SphereGeometry(14, 16, 16);
+    const haloMat = new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0.15 });
+    const halo = new THREE.Mesh(haloGeo, haloMat);
+    halo.position.copy(sun.position);
+    this.scene.add(halo);
+
+    // Clouds
+    this._addClouds();
+  }
+
+  private _addClouds() {
+    const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.88 });
+    const cloudPositions = [
+      [-150, 80, -200], [100, 100, -180], [200, 90, -100],
+      [-200, 70, -50], [0, 110, -300], [250, 85, 50],
+      [-100, 95, 200], [150, 75, 150],
+    ];
+    for (const [cx, cy, cz] of cloudPositions) {
+      const group = new THREE.Group();
+      const puffs = 4 + Math.floor(Math.random() * 4);
+      for (let p = 0; p < puffs; p++) {
+        const r = 6 + Math.random() * 10;
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 7), cloudMat);
+        puff.position.set(
+          (Math.random() - 0.5) * 30,
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 20
+        );
+        group.add(puff);
+      }
+      group.position.set(cx, cy, cz);
+      this.scene.add(group);
+    }
   }
 
   // ─── INPUT EVENTS ──────────────────────────────────────────────
@@ -270,8 +291,8 @@ export class GameEngine {
         obj.update?.(t);
       }
 
-      // Pulsing city glow
-      this.cityAmb.intensity = 0.12 + Math.sin(t * 0.3) * 0.04;
+      // Subtle daytime variation
+      this.cityAmb.intensity = 0.08 + Math.sin(t * 0.1) * 0.02;
 
       this.renderer.render(this.scene, this.camera);
     };

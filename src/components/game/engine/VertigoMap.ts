@@ -185,7 +185,7 @@ export function buildCityBelow(scene: THREE.Scene): CityObject[] {
 
   // ─── GROUND PLANE ────────────────────────────────────────────
   const groundGeo = new THREE.PlaneGeometry(600, 600);
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x1a1e26 });
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0x4a5240 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, CITY_Y, 0);
@@ -193,8 +193,8 @@ export function buildCityBelow(scene: THREE.Scene): CityObject[] {
   addCity(ground);
 
   // ─── ROAD GRID ───────────────────────────────────────────────
-  const roadMat = new THREE.MeshLambertMaterial({ color: 0x2a2e38 });
-  const linesMat = new THREE.MeshLambertMaterial({ color: 0xf5c518 });
+  const roadMat = new THREE.MeshLambertMaterial({ color: 0x444440 });
+  const linesMat = new THREE.MeshLambertMaterial({ color: 0xf0e060 });
 
   // Main roads
   for (let i = -2; i <= 2; i++) {
@@ -223,9 +223,9 @@ export function buildCityBelow(scene: THREE.Scene): CityObject[] {
   }
 
   // ─── CITY BUILDINGS ──────────────────────────────────────────
-  const buildingColors = [0x1e2535, 0x252d3d, 0x1c2030, 0x2a3348, 0x1a2040, 0x21293a];
-  const windowColor = 0xffd080;
-  const windowOffColor = 0x223355;
+  const buildingColors = [0xc8bfb0, 0xb0a898, 0xd4cfc5, 0xa8b4be, 0xbfc8d0, 0xd8d0c4, 0xe0d8cc];
+  const windowColor = 0x88ccff;
+  const windowOffColor = 0x6688aa;
 
   const buildingData = [
     // [x, z, w, d, h]
@@ -270,45 +270,20 @@ export function buildCityBelow(scene: THREE.Scene): CityObject[] {
           CITY_Y + floor * 4 + 2,
           bz + bd / 2 + 0.05
         );
-        // Flicker some windows
-        if (on && Math.random() > 0.85) {
-          const flickerSpeed = 0.5 + Math.random() * 2;
-          const flickerOffset = Math.random() * Math.PI * 2;
-          addCity(wMesh, (t) => {
-            const v = Math.sin(t * flickerSpeed + flickerOffset);
-            (wMesh.material as THREE.MeshBasicMaterial).color.setHex(v > 0 ? windowColor : windowOffColor);
-          });
-        } else {
-          addCity(wMesh);
-        }
+        addCity(wMesh);
       }
     }
 
-    // Rooftop lights
-    const rtLight = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xff3300 })
-    );
-    rtLight.position.set(bx, CITY_Y + bh + 0.5, bz);
-    addCity(rtLight, (t) => {
-      const visible = Math.sin(t * 1.5 + (bx + bz) * 0.1) > 0;
-      rtLight.visible = visible;
-    });
   }
 
-  // ─── STREETLIGHTS ────────────────────────────────────────────
-  const poleMatC = new THREE.MeshLambertMaterial({ color: 0x888888 });
-  const lampGlow = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+  // ─── STREETLIGHTS (day — just poles, lamps off) ───────────────
+  const poleMatC = new THREE.MeshLambertMaterial({ color: 0x999999 });
 
   for (let x = -240; x <= 240; x += 40) {
     for (let z = -240; z <= 240; z += 40) {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 12, 6), poleMatC);
       pole.position.set(x + 6, CITY_Y + 6, z + 6);
       addCity(pole);
-
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), lampGlow);
-      lamp.position.set(x + 6, CITY_Y + 12.5, z + 6);
-      addCity(lamp);
     }
   }
 
