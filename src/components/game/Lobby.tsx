@@ -219,8 +219,8 @@ export default function Lobby({ onNavigate, onStartRound, playerMoney }: LobbyPr
               </button>
               <button
                 onClick={() => {
-                  setIsReady(!isReady);
-                  if (!isReady) onStartRound();
+                  setIsReady(true);
+                  onStartRound();
                 }}
                 className={`
                   font-oswald font-semibold tracking-widest uppercase text-sm px-6 py-2.5

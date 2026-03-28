@@ -6,8 +6,9 @@ import Lobby from './components/game/Lobby';
 import Shop from './components/game/Shop';
 import Settings from './components/game/Settings';
 import RoundStart from './components/game/RoundStart';
+import GameView from './components/game/GameView';
 
-type Screen = 'menu' | 'lobby' | 'shop' | 'settings' | 'roundstart' | 'shop-round';
+type Screen = 'menu' | 'lobby' | 'shop' | 'settings' | 'roundstart' | 'shop-round' | 'game';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('menu');
@@ -20,7 +21,7 @@ export default function App() {
   };
 
   const handleStartRound = () => {
-    setScreen('roundstart');
+    setScreen('game');
   };
 
   const navigate = (s: string) => {
@@ -67,6 +68,14 @@ export default function App() {
         )}
         {screen === 'roundstart' && (
           <RoundStart
+            onNavigate={navigate}
+            playerMoney={playerMoney}
+            round={round}
+            score={score}
+          />
+        )}
+        {screen === 'game' && (
+          <GameView
             onNavigate={navigate}
             playerMoney={playerMoney}
             round={round}
