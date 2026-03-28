@@ -1,28 +1,79 @@
-
+import { useState } from 'react';
 import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
+import MainMenu from './components/game/MainMenu';
+import Lobby from './components/game/Lobby';
+import Shop from './components/game/Shop';
+import Settings from './components/game/Settings';
+import RoundStart from './components/game/RoundStart';
 
-const queryClient = new QueryClient();
+type Screen = 'menu' | 'lobby' | 'shop' | 'settings' | 'roundstart' | 'shop-round';
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+export default function App() {
+  const [screen, setScreen] = useState<Screen>('menu');
+  const [playerMoney, setPlayerMoney] = useState(3000);
+  const [round] = useState(1);
+  const [score] = useState({ ct: 0, t: 0 });
+
+  const handleBuy = (cost: number) => {
+    setPlayerMoney(prev => Math.max(0, prev - cost));
+  };
+
+  const handleStartRound = () => {
+    setScreen('roundstart');
+  };
+
+  const navigate = (s: string) => {
+    setScreen(s as Screen);
+  };
+
+  return (
     <TooltipProvider>
       <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <div className="min-h-screen bg-game-bg">
+        {screen === 'menu' && (
+          <MainMenu
+            onNavigate={navigate}
+            playerName="М. Волков"
+            playerRank="Орёл II"
+            playerLevel={32}
+          />
+        )}
+        {screen === 'lobby' && (
+          <Lobby
+            onNavigate={navigate}
+            onStartRound={handleStartRound}
+            playerMoney={playerMoney}
+          />
+        )}
+        {screen === 'shop' && (
+          <Shop
+            onNavigate={navigate}
+            playerMoney={playerMoney}
+            onBuy={handleBuy}
+            isInRound={false}
+          />
+        )}
+        {screen === 'shop-round' && (
+          <Shop
+            onNavigate={navigate}
+            playerMoney={playerMoney}
+            onBuy={handleBuy}
+            isInRound={true}
+          />
+        )}
+        {screen === 'settings' && (
+          <Settings onNavigate={navigate} />
+        )}
+        {screen === 'roundstart' && (
+          <RoundStart
+            onNavigate={navigate}
+            playerMoney={playerMoney}
+            round={round}
+            score={score}
+          />
+        )}
+      </div>
     </TooltipProvider>
-  </QueryClientProvider>
-);
-
-export default App;
+  );
+}
